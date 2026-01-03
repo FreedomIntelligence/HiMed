@@ -226,46 +226,116 @@ accelerate launch --config_file ./configs/<CONFIG_STAGE3>.yaml \
 ---
 
 
-## 🧩 Data Pipeline (Data Code)
+## 🧩 Data Pipeline (Data_code)
 
-> This section corresponds to **Data Code/**. Keep it practical: “input → steps → output”.
+This section corresponds to **`Data_code/`**, which contains scripts for **(1) OCR**, **(2) HiMed data generation**, and **(3) translation**.
 
-### Typical Pipeline
-1) Collect raw sources (Western + Indian medicine)
-2) Cleaning & normalization (Unicode, punctuation, boilerplate removal)
-3) Translation / bilingual alignment (if applicable)
-4) Deduplication (exact + near-dup; doc + sample level)
-5) Filtering / quality control (language ID, domain classifier, rules)
-6) Construct SFT / reasoning data (templates, constraints)
-7) Build benchmarks (standardized schema + answer checks)
-
-### Example Commands (placeholders)
-```bash
-cd "Data Code"
-
-# (1) preprocess / clean
-python preprocess.py --input <RAW_DIR> --output <CLEAN_DIR>
-
-# (2) translate / align (optional)
-python translate.py --input <CLEAN_DIR> --output <HI_DIR> --engine <...>
-
-# (3) dedup
-python dedup.py --input <HI_DIR> --output <DEDUP_DIR> --method <minhash/exact>
-
-# (4) build benchmark json
-python build_bench.py --input <DEDUP_DIR> --output ../Data/himed_bench/
+```text
+Data_code/
+├── 01_ocr/                              # DeepSeek-OCR (official codebase, unmodified)
+├── 02_data_generation/
+│   ├── 01_preprocessing/                # PDF/MMD → passages (clean/cluster/combine/pick/calibrate/label)
+│   └── 02_sft_generation_scoring/       # passage → Q/A/CoT instances + LLM-as-a-judge scoring
+└── 03_translation/                      # lexicon-guided translation scripts (HiMed-West)
 ```
 
 ---
 
-## ✅ Reproducibility
-- Random seeds: `<seed>`
-- Training configs: `Training code/configs/*.yaml`
-- Checkpoint naming: `<convention>`
-- Logs: `<wandb/swanlab/tensorboard>`
-- Recommended: record `git commit`, `transformers` version, `cuda` version in logs
+### 1) OCR (DeepSeek-OCR)
+
+We use the **official DeepSeek-OCR** codebase **without modifications**. Please follow the original instructions in `Data_code/01_ocr/`.
+
+> Recommendation: keep DeepSeek-OCR as a git submodule or a pinned snapshot, and preserve its LICENSE/NOTICE.
 
 ---
+
+### 2) Data Generation (HiMed-Trad passage pipeline + instance construction)
+
+This part implements the end-to-end construction of **culture-grounded Hindi reasoning data** from noisy, real-world scans (PDF → OCR → passages → calibrated passages → labeled quality splits → training instances).
+
+#### 2.1 Passage Preparation & Cleaning (`02_data_generation/01_preprocessing/`)
+
+**Inputs**
+- `pdf/`: raw scanned PDFs, named like `001.pdf`, `002.pdf`, ...
+- `mmd/`: DeepSeek-OCR outputs, named like `001.mmd`, `002.mmd`, ...
+- (auto-generated) `pictures/`: page images aligned to PDF pages (e.g., `pictures/001/1.png`)
+
+**Step-by-step scripts (in order)**
+| Step | Script | Input | Output | What it does |
+|---|---|---|---|---|
+| 0 | DeepSeek-OCR | `pdf/*.pdf` | `mmd/*.mmd` | OCR each PDF (kept in `mmd/`). |
+| 1 | `split.py` | `pdf/*.pdf` (or OCR artifacts) | `pictures/<raw_id>/<page>.png` | Extract page images for later calibration / grounding. |
+| 2 | `transform.py` | `mmd/*.mmd` | `transformed_json/*.json` | Convert OCR outputs into JSON entries. |
+| 3 | `clean.py` | `transformed_json/*.json` | `cleaned_json/*.clean.json` | Normalize & clean OCR text (remove noise / broken fragments). |
+| 4 | `cluster.py` | `cleaned_json/*.clean.json` | `clustered_json/*.cluster.json` | Merge adjacent fragments into coherent passages by “knowledge density” (threshold is configurable; default ~0.65). |
+| 5 | `filter1.py` | `clustered_json/*.cluster.json` | `analyzed_json/*.analyze.json` | Produce **four decisions** per passage to decide whether it should be merged / retained (the “four-flag” analysis). |
+| 6 | `combine.py` | `analyzed_json/*.analyze.json` | `combined_json/*.combine.json` | Merge passages based on the four-flag analysis results. |
+| 7 | `pick.py` | `combined_json/*.combine.json` | `picked_json/*.pick.json` + `abandoned_json/*.abandon.json` | Select passages that match the target four-flag pattern (e.g., **TTFF**) and discard the rest. |
+| 8 | `calibrate.py` | `picked_json/*.pick.json` + `pictures/` | `calibrated_json/*.calibrate.json` | Use an LLM to **repair OCR errors** with page-image grounding, yielding coherent, self-contained Hindi passages. |
+| 9 | `filter2.py` | `calibrated_json/*.calibrate.json` | `labeled_json/*.label.json` | LLM-based labeling into quality buckets (**Good / Middle / Bad**) for downstream usage. |
+| 10 | `distribute.py` | `labeled_json/*.label.json` | `good/*.json`, `middle/*.json`, `bad/*.json` | Split labeled outputs into three files for easy consumption (Good can be used directly; Middle/Bad are optional for review). |
+
+**Notes**
+- We treat all items derived from the same **source passage** as an **indivisible unit** for splitting (strict passage-level split) to avoid leakage between corpus and benchmark.
+- Ensure your metadata preserves alignment between `raw_id` ↔ PDF, and stores the merged `page_range` list for calibration/traceability.
+
+#### 2.2 Training Instance Generation & Scoring (`02_data_generation/02_sft_generation_scoring/`)
+
+This folder turns **Good passages** into **instruction-style reasoning instances** (Q/A/CoT), and optionally runs a second-model audit (“LLM as a judge”).
+
+**Pipeline overview (aligned with the design doc)**
+1) **Prepare grounded passages**  
+   - Each entry contains `text` plus `metadata` that tracks `raw_id`, `text_id`, and merged `page_range`.
+
+2) **Tagging: subject + question type**  
+   - Ask an LLM to predict up to **5 subjects** and up to **3 question types** (e.g., `MCQ / QA / Dialogue`).  
+   - If nothing fits, fall back to a general category such as `medical knowledge`.
+
+3) **Expand multi-label entries into single-label instances**  
+   - Split one entry with `(subject_list, type_list)` into multiple entries, each with exactly **one** `subject` and **one** `type`.  
+   - Assign `entry_id` like `01, 02, 03, ...`.
+
+4) **Add generation controls**  
+   - Add deterministic `id`, plus `few_shot` and `question_template` fields to control instance generation.
+
+5) **Generate Q/A/CoT (grounded-only)**  
+   - Generate **question**, **answer**, and **cot** strictly based on the given `text`.  
+   - If the model cannot generate grounded content, it must output `<FAIL>`.  
+   - After generation, remove `few_shot` and keep the rest.
+
+6) **LLM-as-a-judge scoring (optional)**  
+   - Score each instance with 0–1 values such as:
+     - `grounded_in_context`
+     - `medical_correctness`
+     - `reasoning_clarity`
+     - `language_quality`  
+   - Apply thresholds later to filter training instances.
+
+**Suggested script naming (optional, but recommended)**
+- `training data.py` → `build_instances.py`
+- `cot.py` → `generate_qa_cot.py`
+- `score.py` → `judge_and_score.py`
+
+(You can keep the original names if you prefer; the above are just for readability.)
+
+---
+
+### 3) Translation (`Data_code/03_translation/`)
+
+This directory includes scripts for translation and lexicon-guided term preservation used in **HiMed-West**.  
+(Details to be filled once the translation pipeline section is finalized.)
+
+---
+
+## 📄 License
+- Code: `<MIT / Apache-2.0 / ...>`
+- Data: `<license + attribution + restrictions>`
+
+
+## 📄 License
+- Code: <MIT/Apache-2.0/...>
+- Data: <license + attribution + restrictions>
+
 
 ## 📄 License
 - Code: `<MIT/Apache-2.0/...>`
