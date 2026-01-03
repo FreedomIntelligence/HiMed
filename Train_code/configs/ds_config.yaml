@@ -1,0 +1,26 @@
+compute_environment: LOCAL_MACHINE
+distributed_type: DEEPSPEED
+
+machine_rank: 0
+num_machines: 1
+num_processes: 8
+mixed_precision: bf16
+
+deepspeed_config:
+  zero_optimization:
+    stage: 2
+    offload_optimizer:
+      device: none
+    offload_param:
+      device: none
+    allgather_partitions: true
+    allgather_bucket_size: 200000000
+    reduce_bucket_size: 200000000
+    contiguous_gradients: true
+
+  bf16:
+    enabled: true
+
+  gradient_clipping: 1.0
+  steps_per_print: 1
+  wall_clock_breakdown: false

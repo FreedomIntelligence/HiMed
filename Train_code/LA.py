@@ -411,14 +411,14 @@ def train(args: argparse.Namespace) -> None:
         except AttributeError:
             pass
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Stage-1 ESFT (Huatuo-style copy-base saving, EOS padding)')
-    parser.add_argument('--experiment_name', type=str, default='esft_stage1')
+    parser = argparse.ArgumentParser(description='Stage-1 LA')
+    parser.add_argument('--experiment_name', type=str, default='LA')
     parser.add_argument('--model_path', required=True, type=str)
     parser.add_argument('--data_path', required=True, type=str)
     parser.add_argument('--output_dir', default='./ckpts', type=str)
     parser.add_argument('--best_ckpt_dir', default='./best_ckpt', type=str)
     parser.add_argument('--log_dir', default='./train_logs', type=str)
-    parser.add_argument('--swanlab_project', type=str, default='Hindi_ESFT')
+    parser.add_argument('--swanlab_project', type=str, default='LA')
     parser.add_argument('--swanlab_experiment_name', type=str, default=None)
     parser.add_argument('--max_seq_len', default=4096, type=int)
     parser.add_argument('--gradient_checkpointing', action='store_true')
@@ -434,8 +434,8 @@ if __name__ == '__main__':
     parser.add_argument('--log_steps_per_epoch', default=10, type=int)
     parser.add_argument('--ema_decay', type=float, default=0.9)
     parser.add_argument('--best_improve_threshold', type=float, default=0.0001)
-    parser.add_argument('--save_epoch_snapshots_start', type=int, default=2, help='从第几个 epoch(1-based) 开始保存快照到 best_ckpt_dir（默认从 2 开始）')
-    parser.add_argument('--save_epoch_snapshots_every', type=int, default=2, help='每隔多少个 epoch 保存一次快照（默认 2 => 2,4,6,...；设为 0 关闭）')
+    parser.add_argument('--save_epoch_snapshots_start', type=int, default=2)
+    parser.add_argument('--save_epoch_snapshots_every', type=int, default=2)
     args = parser.parse_args()
     if args.swanlab_experiment_name is None:
         args.swanlab_experiment_name = args.experiment_name
