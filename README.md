@@ -211,43 +211,6 @@ accelerate launch --config_file ./configs/<CONFIG_STAGE3>.yaml \
 
 ---
 
-## 🧐 Evaluation
-
-> This section should map to scripts inside **Training code/** or `evaluation/`.
-
-### 1) Launch Server
-**SGLang example**
-```bash
-model_name="<HF_MODEL_ID_OR_LOCAL_PATH>"
-port=<PORT>
-
-python -m sglang.launch_server \
-  --model-path "$model_name" \
-  --port "$port" \
-  --mem-fraction-static 0.8 \
-  > sglang.log 2>&1 &
-```
-
-### 2) Run Evaluation
-```bash
-cd "Training code"
-python evaluation/eval.py \
-  --model_name "$model_name" \
-  --eval_file "../Data/himed_bench/<EVAL_FILE>.json" \
-  --port "$port" \
-  --strict_prompt <True/False>
-```
-
-### 3) Stop Server
-```bash
-bash evaluation/kill_server.sh
-```
-
-### Metrics
-- Primary: `<accuracy / exact match / F1 / etc.>`
-- Optional: `<calibration, refusal rate, hallucination metrics, etc.>`
-
----
 
 ## 🧩 Data Pipeline (Data Code)
 
