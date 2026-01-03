@@ -1,0 +1,78 @@
+lora:
+  r: 16
+  lora_alpha: 32
+  lora_dropout: 0.05
+  bias: "none"
+  task_type: "CAUSAL_LM"
+  target_modules: ["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"]
+
+model:
+  name: ""
+
+reward_model:
+  model_name: ""
+  temperature: 1.0
+  device: "auto"
+  max_length: 1536
+  threshold: 0.65
+  dtype: "bf16"
+
+training:
+  output_dir: ""
+
+  per_device_train_batch_size: 8
+  gradient_accumulation_steps: 4
+
+  learning_rate: 5.0e-6
+  weight_decay: 0.01
+  warmup_ratio: 0.03
+  lr_scheduler_type: "cosine"
+  num_train_epochs: 2
+  max_grad_norm: 1.0
+  gradient_checkpointing: true
+
+  max_prompt_length: 384
+  max_completion_length: 1280
+
+  num_generations: 8
+  num_iterations: 3
+  epsilon: 0.2
+  beta: 0.001
+  temperature: 1.0
+  top_p: 1.0
+
+  reward_weights: [1.0, 0]
+  reward_weights_end: [1.0, 0]
+  reward_weights_schedule: "cosine"  
+
+  lexicon_config:
+    path: ""
+    min_en_length: 2
+    min_hi_length: 1
+    use_ahocorasick: false
+    english_column: "English"
+
+  use_vllm: true
+  vllm_mode: "colocate"
+
+  vllm_gpu_memory_utilization: 0.3
+  vllm_server_timeout: 240.0
+  generation_batch_size: 16
+
+  bf16: true
+  fp16: false
+
+  logging_steps: 5
+  save_steps: 200
+  eval_steps: 0
+
+accelerate:
+  mixed_precision: "bf16"
+
+wandb:
+  enabled: true
+  project: ""
+  tags: ["grpo", "rlhf", "vllm", "llama3.1-8b", "lora"]
+
+dataset:
+  path: ""
