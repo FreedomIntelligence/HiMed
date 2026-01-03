@@ -395,14 +395,14 @@ def train(args: argparse.Namespace) -> None:
         except AttributeError:
             pass
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='HSFT Stage-2 (Huatuo-style template+encode, EOS padding, copy-base saving, warmup+cosine, ZeRO-2 safe)')
-    parser.add_argument('--experiment_name', type=str, default='llama3_stage2_cot_sft')
+    parser = argparse.ArgumentParser(description='Stage-2 RC')
+    parser.add_argument('--experiment_name', type=str, default='RC')
     parser.add_argument('--model_path', required=True, type=str)
     parser.add_argument('--data_path', required=True, type=str)
     parser.add_argument('--output_dir', default='./ckpts', type=str)
     parser.add_argument('--best_ckpt_dir', default='./best_ckpt', type=str)
     parser.add_argument('--log_dir', default='./train_logs', type=str)
-    parser.add_argument('--swanlab_project', type=str, default='Hindi_HSFT')
+    parser.add_argument('--swanlab_project', type=str, default='RC')
     parser.add_argument('--swanlab_experiment_name', type=str, default=None)
     parser.add_argument('--max_seq_len', default=4096, type=int)
     parser.add_argument('--gradient_checkpointing', action='store_true')

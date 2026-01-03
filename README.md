@@ -118,74 +118,88 @@ python -m sglang.launch_server \
 
 ## 📚 Data (HiMed)
 
-### What’s Included
-HiMed covers both **Western medicine** and **Indian systems of medicine**, and supports:
-- language adaptation corpora (Hindi medical text / mixed corpora)
-- instruction/reasoning data for cold-start
-- benchmark suite with standardized evaluation formats
+HiMed is a Hindi medical dataset and benchmark suite covering both Western medicine and Indian systems of medicine. It consists of two parts: **HiMed-Trad** (traditional Indian medicine) and **HiMed-West** (Western medicine under Hindi prompts). We enforce strict data separation between training corpora and evaluation benchmarks to prevent leakage (see paper for details).
 
-### Data Folder Layout (example)
+### Data Files
+We release five JSON files under `Data/`:
+
 ```text
 Data/
-├── README.md                        # data index (recommended)
-├── himed_corpus/                    # training corpora (if released locally)
-├── himed_sft/                       # SFT / cold-start reasoning data
-├── himed_bench/                     # benchmark JSON/JSONL
-└── LICENSE / NOTICE                 # data license & attribution
+├── HiMed-Trad_Bench.json
+├── HiMed-Trad_Corpus_sample.json
+├── HiMed-West_Bench.json
+├── HiMed-West_Corpus_sample.json
+└── HiMed-West_Exam.json
 ```
 
-### Download / Access
-- If hosted on Hugging Face: [HiMed on HF](<HF_DATASET_URL>)
-- If you keep large files out of git, provide:
-  - `Data/README.md` with download scripts / pointers
-  - checksums for integrity (optional but recommended)
+### Statistics
+- **HiMed-Trad Bench**: 6,010
+- **HiMed-West Bench**: 1,784
+- **HiMed-West Exam**: 470
+- **HiMed-Trad Corpus (full)**: 286,657
+- **HiMed-West Corpus (full)**: 116,859
 
-### Benchmarks
-Fill your benchmark table here (add/remove as needed):
+### Note on Corpus Release
+The full training corpora are large. In this repository, we provide **500-sample subsets** for:
+- `HiMed-Trad_Corpus_sample.json`
+- `HiMed-West_Corpus_sample.json`
 
-| Benchmark | Domain | Language | Format | Split | Notes |
-|---|---|---:|---|---|---|
-| HiMed-West | Western Medicine | hi/en | JSON | test | MCQ / QA |
-| HiMed-Trad | Indian Medicine | hi/en | JSON | test | Ayurveda / etc. |
-| <...> | <...> | <...> | <...> | <...> | <...> |
+The complete versions of **HiMed-Trad Corpus** and **HiMed-West Corpus** will be released upon paper acceptance.
 
----
 
-## 🧪 Training (Three-Stage Framework)
+## 🚀 Training
 
-> This section corresponds to **Training code/**. We recommend adding a `Training code/README.md` as well.
+### Stage 1: Language Adaptation (LA)
 
-### Hardware / Environment
-- GPUs: `<e.g., 8×H100 / 8×A100>`
-- Precision: `<bf16/fp16>`
-- Distributed: `<deepspeed/accelerate>`
-- Key deps: `transformers`, `datasets`, `accelerate`, `<trl/peft/etc.>`
-
-### Stage 1 — Language Adaptation (LAPT)
-Goal: improve Hindi medical language competence (domain + language coverage).
+Fine-tune the base model (**LLaMA-3.1-8B-Instruct**) on an **8×H200** setup with Accelerate + DeepSpeed. We use bf16 and ZeRO stage-2; see `Train_code/configs/ds_config.yaml` for details.
 
 ```bash
-cd "Training code"
-accelerate launch --config_file ./configs/<CONFIG_STAGE1>.yaml \
-  S1_language_adaptation.py \
-  --model_path <BASE_MODEL_ID> \
-  --data_path <DATA_PATH_STAGE1> \
-  --output_dir <OUTPUT_DIR_STAGE1> \
-  --run_name <RUN_NAME_STAGE1>
+accelerate launch \
+  --config_file Train_code/configs/ds_config.yaml \
+  --num_processes 8 \
+  Train_code/LA.py \
+  --model_path <BASE_MODEL_PATH_OR_HF_ID> \
+  --data_path <STAGE1_DATA_PATH> \
+  --output_dir <OUTPUT_DIR> \
+  --max_seq_len 4096 \
+  --train_bsz_per_gpu 32 \
+  --gradient_accumulation_steps 1 \
+  --learning_rate 5e-6 \
+  --n_epochs 3 \
+  --gradient_checkpointing
 ```
 
-### Stage 2 — Reasoning Cold-Start (SFT)
-Goal: bootstrap Hindi medical reasoning (instruction-following + rationale style, if used).
+Notes:
+- You can set `--experiment_name` / logging backends (e.g., SwanLab/W&B) if needed; we omit them here for clarity.
+
+
+
+### Stage 2: Reasoning Cold-Start (RC)
+
+Fine-tune the Stage-1 checkpoint for Hindi medical reasoning on an **8×H200** setup with Accelerate + DeepSpeed (bf16, ZeRO-2). The distributed/ZeRO configuration is defined in `Train_code/configs/ds_config.yaml`.
 
 ```bash
-cd "Training code"
-accelerate launch --config_file ./configs/<CONFIG_STAGE2>.yaml \
-  S2_reasoning_coldstart.py \
-  --model_path <CKPT_FROM_STAGE1> \
-  --data_path <DATA_PATH_STAGE2> \
-  --output_dir <OUTPUT_DIR_STAGE2> \
-  --run_name <RUN_NAME_STAGE2>
+accelerate launch \
+  --config_file Train_code/configs/ds_config.yaml \
+  --num_processes 8 \
+  Train_code/RC.py \
+  --model_path <PATH_TO_STAGE1_CKPT> \
+  --data_path <STAGE2_DATA_PATH> \
+  --output_dir <OUTPUT_DIR> \
+  --best_ckpt_dir <BEST_CKPT_DIR> \
+  --max_seq_len 4096 \
+  --train_bsz_per_gpu 8 \
+  --gradient_accumulation_steps 1 \
+  --learning_rate 5e-6 \
+  --n_epochs 3 \
+  --gradient_checkpointing
 ```
+
+Optional:
+- `--weight_decay` (default: 0.01)
+- `--warmup_rates` (default: 0.03)
+- `--ckpt_per_epoch` / `--log_steps_per_epoch` (checkpointing/logging frequency)
+
 
 ### Stage 3 — Decaying Scaffolding Reward Reinforcement Learning (DSR-RL)
 Goal: RL with a **decaying scaffolding** reward that shifts emphasis from guided reasoning behavior → task-optimal objective.
