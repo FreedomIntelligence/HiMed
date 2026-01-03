@@ -39,63 +39,133 @@ To this end, we propose a **three-stage training framework** comprising **langua
 
 ## 👨‍⚕️ Models
 
-### Model Access
-| Model | Backbone | Languages | Description | Link |
-|------|----------|-----------|-------------|------|
-| **HiMed-8B** | LLaMA-3.1-8B-Instruct | Hindi & English | Hindi medical reasoning model | [HF Link](<HF_MODEL_URL>) |
+We do **not** release model checkpoints at this stage.
 
-> If you provide multiple checkpoints (e.g., stage1/stage2/stage3), add rows here.
+- `Models/` is intentionally left **empty** in this repository.
+- Checkpoints and model weights **will be open-sourced once accepted**.
 
 ---
 
 ## 🚀 Quickstart
 
 ### 1) Installation
+
 ```bash
-git clone <GITHUB_URL>
-cd <REPO_NAME>
-
-# (recommended) create env
-conda create -n himed python=3.10 -y
-conda activate himed
-
-pip install -r requirements.txt
+git clone https://github.com/FreedomIntelligence/HiMed.git
+cd HiMed
 ```
 
-### 2) Quick Inference (Transformers)
-```python
-from transformers import AutoModelForCausalLM, AutoTokenizer
+This repo uses **two Conda environments**:
+- **Stage 1 / Stage 2** share the same environment and dependencies (see `Train_code/requirements.txt`).
+- **Stage 3 (DSR-RL)** uses a separate environment (see `Train_code/DSR-RL/requirements.txt`).
 
-model_id = "<HF_MODEL_ID_OR_LOCAL_PATH>"
-model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype="auto", device_map="auto")
-tokenizer = AutoTokenizer.from_pretrained(model_id)
+#### Env A — for Stage 1 / Stage 2 (LA + RC)
 
-messages = [{"role": "user", "content": "हिंदी में खांसी को कैसे रोकें? संक्षेप में बताएं।"}]
-inputs = tokenizer(
-    tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True),
-    return_tensors="pt"
-).to(model.device)
-
-outputs = model.generate(**inputs, max_new_tokens=1024, temperature=0.2)
-print(tokenizer.decode(outputs[0], skip_special_tokens=True))
-```
-
-### 3) Deploy (vLLM / SGLang)
-
-**vLLM**
 ```bash
-vllm serve <HF_MODEL_ID_OR_LOCAL_PATH> \
-  --tensor-parallel-size <TP> \
-  --port <PORT>
+conda create -n himed-train python=3.10 -y
+conda activate himed-train
+
+pip install -r Train_code/requirements.txt
 ```
 
-**SGLang**
+#### Env B — for Stage 3 (DSR-RL)
+
 ```bash
-python -m sglang.launch_server \
-  --model-path <HF_MODEL_ID_OR_LOCAL_PATH> \
-  --port <PORT> \
-  --mem-fraction-static 0.8
+conda create -n himed-rl python=3.10 -y
+conda activate himed-rl
+
+pip install -r Train_code/DSR-RL/requirements.txt
 ```
+
+---
+
+### 2) Training (Stage 1 / Stage 2 / Stage 3)
+
+> Training scripts are under `Train_code/`.  
+> Our runs use **8×H200**, **bf16**, and **Accelerate + DeepSpeed (ZeRO-2)**.
+
+(Optional but recommended for large-scale runs)
+```bash
+mkdir -p /data/tmp
+export TMPDIR=/data/tmp
+export TEMP=/data/tmp
+export TMP=/data/tmp
+
+export PYTORCH_ALLOC_CONF=expandable_segments:True
+export NCCL_IB_DISABLE=1
+export NCCL_BLOCKING_WAIT=1
+```
+
+#### Stage 1 — Language Adaptation (LA)
+
+- Script: `Train_code/LA.py`
+- Accelerate/DeepSpeed config: `Train_code/configs/ds_config.yaml`
+
+```bash
+conda activate himed-train
+cd Train_code
+
+accelerate launch \
+  --config_file ./configs/ds_config.yaml \
+  --num_processes 8 \
+  LA.py \
+  --experiment_name <EXP_NAME_STAGE1> \
+  --model_path <PATH_TO_BASE_MODEL_OR_LOCAL_CKPT> \
+  --data_path <DATA_PATH_STAGE1> \
+  --output_dir <OUTPUT_DIR_STAGE1> \
+  --best_ckpt_dir <BEST_CKPT_DIR> \
+  --max_seq_len <MAX_SEQ_LEN> \
+  --train_bsz_per_gpu <BSZ_PER_GPU> \
+  --gradient_accumulation_steps <GA> \
+  --learning_rate <LR> \
+  --weight_decay <WD> \
+  --warmup_rates <WARMUP_RATIO> \
+  --n_epochs <EPOCHS> \
+  --gradient_checkpointing
+```
+
+#### Stage 2 — Reasoning Cold-Start (RC)
+
+- Script: `Train_code/RC.py`
+- Same config: `Train_code/configs/ds_config.yaml`
+- `--model_path` points to the Stage 1 checkpoint (e.g., `best_checkpoint`)
+
+```bash
+conda activate himed-train
+cd Train_code
+
+accelerate launch \
+  --config_file ./configs/ds_config.yaml \
+  --num_processes 8 \
+  RC.py \
+  --experiment_name <EXP_NAME_STAGE2> \
+  --model_path <PATH_TO_STAGE1_CKPT> \
+  --data_path <DATA_PATH_STAGE2> \
+  --output_dir <OUTPUT_DIR_STAGE2> \
+  --best_ckpt_dir <BEST_CKPT_DIR> \
+  --max_seq_len <MAX_SEQ_LEN> \
+  --train_bsz_per_gpu <BSZ_PER_GPU> \
+  --gradient_accumulation_steps <GA> \
+  --learning_rate <LR> \
+  --weight_decay <WD> \
+  --warmup_rates <WARMUP_RATIO> \
+  --n_epochs <EPOCHS> \
+  --gradient_checkpointing
+```
+
+
+#### Stage 3 — DSR-RL (Placeholder)
+
+Stage 3 (Decaying Scaffolding Reward RL) is currently a placeholder in this repo.
+
+```bash
+# TODO (placeholder)
+# conda activate himed-rl
+# cd Train_code/DSR-RL
+# accelerate launch ... <your RL entrypoint> ...
+```
+
+
 
 ---
 
