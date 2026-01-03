@@ -1,3 +1,4 @@
+import os
 import sys
 import re
 from typing import Tuple, Dict, List
@@ -7,8 +8,8 @@ from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 import pandas as pd
 
 class _Config:
-    MODEL_PATH = '/data/models/nllb-200-3.3B'
-    LEXICON_PATH = '/data/bufan/machenze/Translation/Stage_2/final_lexicon_table.xlsx'
+    MODEL_PATH = os.environ.get('NLLB_MODEL_PATH', '')
+    LEXICON_PATH = os.environ.get('MED_LEXICON_PATH', '')
     SOURCE_LANG = 'eng_Latn'
     TARGET_LANG = 'hin_Deva'
     BATCH_SIZE = 8
