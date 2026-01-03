@@ -1,21 +1,6 @@
-# <PROJECT-NAME> (HiMed-8B): Hindi Medical Reasoning with Cross-Lingual Transfer + DSR-RL
+# <PROJECT-NAME> HiMed: Incentivizing Hindi Reasoning via Decaying Scaffolding Reward Reinforcement Learning in Medical LLMs
 
-<div align="center">
-<h3><PROJECT-NAME> / HiMed-8B</h3>
-</div>
 
-<p align="center">
-📃 <a href="<PAPER_URL>" target="_blank">Paper</a> |
-🤗 <a href="<HF_MODEL_URL>" target="_blank">Model (HiMed-8B)</a> |
-📚 <a href="<HF_DATASET_URL>" target="_blank">Data (HiMed)</a> |
-💻 <a href="<GITHUB_URL>" target="_blank">Code</a>
-</p>
-
-<div align="center">
-<img src="assets/<HERO_IMAGE>.png" width="90%" alt="<PROJECT-NAME> overview" />
-</div>
-
----
 
 ## ⚡ Introduction
 
@@ -40,14 +25,12 @@ To this end, we propose a **three-stage training framework** comprising **langua
 
 ## 🧭 Repository Structure
 
-> If you see broken tree formatting on GitHub, ensure it is inside a fenced code block (as below).
 
 ```text
 .
 ├── Data/                  # all released datasets & benchmark files (or download pointers)
 ├── Training code/         # stage1/2/3 training + RL + evaluation scripts
-├── Data Code/             # data construction / translation / filtering / dedup pipelines
-└── assets/                # figures, diagrams, project images
+└──Data Code/             # data construction / translation / filtering / dedup pipelines
 ```
 
 **Recommended reading order:** `Data/ → Training code/ → Data Code/`.
@@ -245,127 +228,86 @@ Data_code/
 
 We use the **official DeepSeek-OCR** codebase **without modifications**. Please follow the original instructions in `Data_code/01_ocr/`.
 
-> Recommendation: keep DeepSeek-OCR as a git submodule or a pinned snapshot, and preserve its LICENSE/NOTICE.
 
 ---
 
-### 2) Data Generation (HiMed-Trad passage pipeline + instance construction)
+### 2) Data Generation (`Data_code/02_data_generation/`)
 
-This part implements the end-to-end construction of **culture-grounded Hindi reasoning data** from noisy, real-world scans (PDF → OCR → passages → calibrated passages → labeled quality splits → training instances).
+This directory contains the core construction pipeline for **HiMed-Trad**, including:
+- **Passage Preparation & Cleaning** (PDF → OCR → calibrated passages → quality splits)
+- **Training Instance Generation & Scoring** (passages → question/answer/reasoning instances + optional judge scoring)
 
-#### 2.1 Passage Preparation & Cleaning (`02_data_generation/01_preprocessing/`)
+For the full step-by-step workflow and script mapping, see:
+- `Data_code/02_data_generation/README.md`
 
-**Inputs**
-- `pdf/`: raw scanned PDFs, named like `001.pdf`, `002.pdf`, ...
-- `mmd/`: DeepSeek-OCR outputs, named like `001.mmd`, `002.mmd`, ...
-- (auto-generated) `pictures/`: page images aligned to PDF pages (e.g., `pictures/001/1.png`)
-
-**Step-by-step scripts (in order)**
-| Step | Script | Input | Output | What it does |
-|---|---|---|---|---|
-| 0 | DeepSeek-OCR | `pdf/*.pdf` | `mmd/*.mmd` | OCR each PDF (kept in `mmd/`). |
-| 1 | `split.py` | `pdf/*.pdf` (or OCR artifacts) | `pictures/<raw_id>/<page>.png` | Extract page images for later calibration / grounding. |
-| 2 | `transform.py` | `mmd/*.mmd` | `transformed_json/*.json` | Convert OCR outputs into JSON entries. |
-| 3 | `clean.py` | `transformed_json/*.json` | `cleaned_json/*.clean.json` | Normalize & clean OCR text (remove noise / broken fragments). |
-| 4 | `cluster.py` | `cleaned_json/*.clean.json` | `clustered_json/*.cluster.json` | Merge adjacent fragments into coherent passages by “knowledge density” (threshold is configurable; default ~0.65). |
-| 5 | `filter1.py` | `clustered_json/*.cluster.json` | `analyzed_json/*.analyze.json` | Produce **four decisions** per passage to decide whether it should be merged / retained (the “four-flag” analysis). |
-| 6 | `combine.py` | `analyzed_json/*.analyze.json` | `combined_json/*.combine.json` | Merge passages based on the four-flag analysis results. |
-| 7 | `pick.py` | `combined_json/*.combine.json` | `picked_json/*.pick.json` + `abandoned_json/*.abandon.json` | Select passages that match the target four-flag pattern (e.g., **TTFF**) and discard the rest. |
-| 8 | `calibrate.py` | `picked_json/*.pick.json` + `pictures/` | `calibrated_json/*.calibrate.json` | Use an LLM to **repair OCR errors** with page-image grounding, yielding coherent, self-contained Hindi passages. |
-| 9 | `filter2.py` | `calibrated_json/*.calibrate.json` | `labeled_json/*.label.json` | LLM-based labeling into quality buckets (**Good / Middle / Bad**) for downstream usage. |
-| 10 | `distribute.py` | `labeled_json/*.label.json` | `good/*.json`, `middle/*.json`, `bad/*.json` | Split labeled outputs into three files for easy consumption (Good can be used directly; Middle/Bad are optional for review). |
-
-**Notes**
-- We treat all items derived from the same **source passage** as an **indivisible unit** for splitting (strict passage-level split) to avoid leakage between corpus and benchmark.
-- Ensure your metadata preserves alignment between `raw_id` ↔ PDF, and stores the merged `page_range` list for calibration/traceability.
-
-#### 2.2 Training Instance Generation & Scoring (`02_data_generation/02_sft_generation_scoring/`)
-
-This folder turns **Good passages** into **instruction-style reasoning instances** (Q/A/CoT), and optionally runs a second-model audit (“LLM as a judge”).
-
-**Pipeline overview (aligned with the design doc)**
-1) **Prepare grounded passages**  
-   - Each entry contains `text` plus `metadata` that tracks `raw_id`, `text_id`, and merged `page_range`.
-
-2) **Tagging: subject + question type**  
-   - Ask an LLM to predict up to **5 subjects** and up to **3 question types** (e.g., `MCQ / QA / Dialogue`).  
-   - If nothing fits, fall back to a general category such as `medical knowledge`.
-
-3) **Expand multi-label entries into single-label instances**  
-   - Split one entry with `(subject_list, type_list)` into multiple entries, each with exactly **one** `subject` and **one** `type`.  
-   - Assign `entry_id` like `01, 02, 03, ...`.
-
-4) **Add generation controls**  
-   - Add deterministic `id`, plus `few_shot` and `question_template` fields to control instance generation.
-
-5) **Generate Q/A/CoT (grounded-only)**  
-   - Generate **question**, **answer**, and **cot** strictly based on the given `text`.  
-   - If the model cannot generate grounded content, it must output `<FAIL>`.  
-   - After generation, remove `few_shot` and keep the rest.
-
-6) **LLM-as-a-judge scoring (optional)**  
-   - Score each instance with 0–1 values such as:
-     - `grounded_in_context`
-     - `medical_correctness`
-     - `reasoning_clarity`
-     - `language_quality`  
-   - Apply thresholds later to filter training instances.
-
-**Suggested script naming (optional, but recommended)**
-- `training data.py` → `build_instances.py`
-- `cot.py` → `generate_qa_cot.py`
-- `score.py` → `judge_and_score.py`
-
-(You can keep the original names if you prefer; the above are just for readability.)
 
 ---
 
 ### 3) Translation (`Data_code/03_translation/`)
 
-This directory includes scripts for translation and lexicon-guided term preservation used in **HiMed-West**.  
-(Details to be filled once the translation pipeline section is finalized.)
+This folder provides the English→Hindi translation pipeline used for **HiMed-West**.
 
----
-
-## 📄 License
-- Code: `<MIT / Apache-2.0 / ...>`
-- Data: `<license + attribution + restrictions>`
-
-
-## 📄 License
-- Code: <MIT/Apache-2.0/...>
-- Data: <license + attribution + restrictions>
-
-
-## 📄 License
-- Code: `<MIT/Apache-2.0/...>`
-- Data: `<license + attribution + restrictions>`
-
----
-
-## 📖 Citation
-```bibtex
-@misc{<YOUR_BIBKEY>,
-  title        = {<TITLE>},
-  author       = {<AUTHORS>},
-  year         = {<YEAR>},
-  eprint       = {<ARXIV_ID>},
-  archivePrefix= {arXiv},
-  primaryClass = {cs.CL},
-  url          = {<URL>}
-}
+```text
+Data_code/03_translation/
+├── translation_api.py        # core API (NLLB + lexicon-guided term handling)
+└── translate.py              # example: batch-translate a JSON dataset
 ```
 
----
-
-## 🙏 Acknowledgements
-- Base model: LLaMA-3.1-8B-Instruct (Meta)
-- Tooling: Hugging Face Transformers / Accelerate / <TRL> / vLLM / SGLang
-- Contributors: <names/affiliations>
+> Note: the example script in this repo may be named `translate (1).py` locally. We recommend renaming it to `translate.py`.
 
 ---
 
-## 📬 Contact
-- Maintainer: <name>
-- Email: <email>
-- Issues: please use GitHub Issues for bugs / requests
+#### 3.1 Configure `translation_api.py`
+
+Edit the `_Config` class in `translation_api.py`:
+
+- `MODEL_PATH` (**required**): NLLB model path or HuggingFace repo id  
+  e.g., `/data/models/nllb-200-3.3B` or `facebook/nllb-200-3.3B`
+- `LEXICON_PATH` (**required**): English–Hindi medical lexicon file (`.xlsx` or `.csv`)  
+  Must contain columns **`English`** and **`Hindi`** (can be an empty table with only headers if you want to disable term rules).
+- `SOURCE_LANG` (default: `eng_Latn`): NLLB source language code
+- `TARGET_LANG` (default: `hin_Deva`): NLLB target language code
+- `BATCH_SIZE` (default: `8`): translation batch size inside the API
+- `USE_DYNAMIC_BATCHING` (default: `True`): enable length-aware batching for speed
+- `LENGTH_BUCKET_SIZE` (default: `16`): bucket size used by dynamic batching
+
+---
+
+#### 3.2 Run the example translator (`translate.py`)
+
+```bash
+cd Data_code/03_translation
+python translate.py
+```
+
+It will ask for:
+
+- `Input JSON path`: path to your dataset JSON
+- `Output JSON path`: output file path
+- `Batch size` (default: `100`): how many segments to translate per call to `translate_paragraphs`
+- `Save interval (batches)` (default: `10`): periodic saving frequency (for long runs)
+
+**Input format**
+- A JSON list: `[{"prompt": ..., "ground_truth": ..., "Complex_CoT": ...}, ...]`, or
+- A dict container: `{"questions": [...]}`
+
+**What it writes**
+- Adds translated fields (if missing):
+  - `prompt_hi`
+  - `ground_truth_hi`
+  - `Complex_CoT_hi` (only if `Complex_CoT` exists)
+
+The script is resumable: if `*_hi` fields already exist, they will be skipped.
+
+---
+
+#### 3.3 Minimal API usage
+
+```python
+from translation_api import translate_paragraph
+
+print(translate_paragraph("How to stop a cough?"))
+```
+
+
+---
