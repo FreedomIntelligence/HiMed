@@ -9,7 +9,7 @@ from collections import defaultdict
 from cot import openai_tool, MODEL_NAME
 
 def judge_entry(entry: dict) -> dict[str, float]:
-    JUDGE_PROMPT_BASE = 'You are an expert data quality rater for a medical Q-A-CoT dataset in traditional medicine.\n\nYou will be given one JSON object with fields:\n- text: source paragraph (in Hindi)\n- subject: one of ["diagnosis","etiology","medical knowledge","prognosis","treatment"]\n- type: one of ["MCQ","QA","Dialogue"]\n- question: generated question\n- answer: generated answer\n- cot: chain-of-thought reasoning\n\nYou must evaluate the question/answer/cot on four dimensions, each scored from 0.00 to 1.00:\n\n1. **grounded_in_context** (生成的内容是否完全基于原文信息):\n   - Score 1.00 if all information in question/answer/cot is directly derivable from the source text\n   - Score lower if there is any hallucinated information or external knowledge not present in the text\n   - Score 0.00 if the content is completely unrelated to the source text\n\n2. **medical_correctness** (医学回答是否正确(基于原文)):\n   - Score 1.00 if the medical information is correct according to the source text\n   - Score lower if there are minor inaccuracies or misinterpretations\n   - Score 0.00 if the medical information is incorrect or contradicts the source text\n\n3. **reasoning_clarity** (推理步骤是否合理清晰):\n   - Score 1.00 if the reasoning steps are logical, clear, and well-structured\n   - Score lower if reasoning is somewhat unclear or has minor logical gaps\n   - Score 0.00 if reasoning is illogical, confusing, or missing\n\n4. **language_quality** (印地语是否流畅自然):\n   - Score 1.00 if the Hindi language is fluent, natural, and grammatically correct\n   - Score lower if there are minor grammatical errors or awkward phrasing\n   - Score 0.00 if the language is severely broken or incomprehensible\n\nReturn ONLY a JSON object with 4 float scores in [0.00, 1.00]:\n{\n  "grounded_in_context": 0.00,\n  "medical_correctness": 0.00,\n  "reasoning_clarity": 0.00,\n  "language_quality": 0.00\n}\n\nDo NOT add any explanations or extra keys. Return only the JSON object.\n'
+    JUDGE_PROMPT_BASE = 'You are an expert data quality rater for a medical Q-A-CoT dataset in traditional medicine.\n\nYou will be given one JSON object with fields:\n- text: source paragraph (in Hindi)\n- subject: one of ["diagnosis","etiology","medical knowledge","prognosis","treatment"]\n- type: one of ["MCQ","QA","Dialogue"]\n- question: generated question\n- answer: generated answer\n- cot: chain-of-thought reasoning\n\nYou must evaluate the question/answer/cot on four dimensions, each scored from 0.00 to 1.00:\n\n1. **grounded_in_context** (whether fully grounded in the source text):\n   - Score 1.00 if all information in question/answer/cot is directly derivable from the source text\n   - Score lower if there is any hallucinated information or external knowledge not present in the text\n   - Score 0.00 if the content is completely unrelated to the source text\n\n2. **medical_correctness** (medical correctness according to the source text):\n   - Score 1.00 if the medical information is correct according to the source text\n   - Score lower if there are minor inaccuracies or misinterpretations\n   - Score 0.00 if the medical information is incorrect or contradicts the source text\n\n3. **reasoning_clarity** (clarity and soundness of reasoning):\n   - Score 1.00 if the reasoning steps are logical, clear, and well-structured\n   - Score lower if reasoning is somewhat unclear or has minor logical gaps\n   - Score 0.00 if reasoning is illogical, confusing, or missing\n\n4. **language_quality** (Hindi fluency and naturalness):\n   - Score 1.00 if the Hindi language is fluent, natural, and grammatically correct\n   - Score lower if there are minor grammatical errors or awkward phrasing\n   - Score 0.00 if the language is severely broken or incomprehensible\n\nReturn ONLY a JSON object with 4 float scores in [0.00, 1.00]:\n{\n  "grounded_in_context": 0.00,\n  "medical_correctness": 0.00,\n  "reasoning_clarity": 0.00,\n  "language_quality": 0.00\n}\n\nDo NOT add any explanations or extra keys. Return only the JSON object.\n'
     payload = {'text': entry.get('text', ''), 'subject': entry.get('subject', ''), 'type': entry.get('type', ''), 'question': entry.get('question', ''), 'answer': entry.get('answer', ''), 'cot': entry.get('cot', '')}
     prompt = JUDGE_PROMPT_BASE + '\n\nHere is the JSON object to rate:\n' + json.dumps(payload, ensure_ascii=False, indent=2)
     ok, content = openai_tool.get_respons(prompt, model=MODEL_NAME)
@@ -57,36 +57,36 @@ def main(input_json: Path, output_json: Path, sleep_between_req: float, parallel
                         time.sleep(retry_delay)
                         continue
                     else:
-                        print(f'[警告] 文件内容为空: {input_json}')
-                        print('    跳过此文件')
+                        print(f'[WARN] File is empty: {input_json}')
+                        print('    Skipping this file')
                         return
                 entries = json.loads(content)
                 break
         except json.JSONDecodeError as e:
             if attempt < max_retries - 1:
-                print(f'[警告] JSON 解析失败 (尝试 {attempt + 1}/{max_retries}): {str(e)[:100]}')
-                print(f'    等待 {retry_delay} 秒后重试...')
+                print(f'[WARN] JSON parse failed (attempt {attempt + 1}/{max_retries}): {str(e)[:100]}')
+                print(f'    Retrying in {retry_delay} seconds...')
                 time.sleep(retry_delay)
                 retry_delay *= 2
             else:
-                print(f'[错误] JSON 解析失败，已重试 {max_retries} 次: {str(e)[:200]}')
-                print('    跳过此文件')
+                print(f'[ERROR] JSON parse failed after {max_retries} attempts: {str(e)[:200]}')
+                print('    Skipping this file')
                 return
         except Exception as e:
             if attempt < max_retries - 1:
-                print(f'[警告] 读取文件失败 (尝试 {attempt + 1}/{max_retries}): {str(e)[:100]}')
+                print(f'[WARN] Failed to read file (attempt {attempt + 1}/{max_retries}): {str(e)[:100]}')
                 time.sleep(retry_delay)
                 retry_delay *= 2
             else:
-                print(f'[错误] 读取文件失败，已重试 {max_retries} 次: {str(e)[:200]}')
-                print('    跳过此文件')
+                print(f'[ERROR] Failed to read file after {max_retries} attempts: {str(e)[:200]}')
+                print('    Skipping this file')
                 return
     if entries is None:
-        print('[错误] 无法读取文件')
+        print('[ERROR] Unable to read file')
         return
     if not isinstance(entries, list):
-        print(f'[警告] JSON 格式不正确，期望列表: {input_json}')
-        print('    跳过此文件')
+        print(f'[WARN] Invalid JSON format (expected a list): {input_json}')
+        print('    Skipping this file')
         return
     print(f'    Found {len(entries)} entries')
     text_id_entries = defaultdict(list)
@@ -188,10 +188,11 @@ def main(input_json: Path, output_json: Path, sleep_between_req: float, parallel
                         pass
                 if completed_count % REPORT_BATCH_SIZE == 0:
                     percentage = completed_count / len(need_scoring) * 100 if len(need_scoring) > 0 else 0
-                    print(f'[{file_name}] 批次 {completed_count // REPORT_BATCH_SIZE}: 完成 {completed_count}/{len(need_scoring)} entry ({percentage:.1f}%) | 成功: {scored_count}, 失败: {failed_count}')
+                    print(f'[{file_name}] batch {completed_count // REPORT_BATCH_SIZE}: done {completed_count}/{len(need_scoring)} entries ({percentage:.1f}%) | success: {scored_count}, failed: {failed_count}')
         return (entry_id, scores, success)
+
     if parallel_workers > 1 and len(need_scoring) > 1:
-        print(f'[{file_name}] 使用并行处理，并行度: {parallel_workers}, 总任务数: {len(need_scoring)}, 汇报间隔: {REPORT_BATCH_SIZE} entry')
+        print(f'[{file_name}] parallel mode, workers: {parallel_workers}, total tasks: {len(need_scoring)}, report interval: {REPORT_BATCH_SIZE} entries')
         entry_with_idx = [(entry, i) for i, entry in enumerate(need_scoring)]
         with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
             future_to_entry = {executor.submit(score_and_save, entry_data): entry_data for entry_data in entry_with_idx}
@@ -204,7 +205,7 @@ def main(input_json: Path, output_json: Path, sleep_between_req: float, parallel
                     entry_data = future_to_entry[future]
                     print(f"    [error] Entry {entry_data[0].get('id', 'unknown')} error: {e}")
     else:
-        print(f'[{file_name}] 使用串行处理')
+        print(f'[{file_name}] serial mode')
         for i, entry in enumerate(need_scoring, 1):
             entry_id = entry.get('id', 'unknown')
             print(f'    [{i}/{len(need_scoring)}] Scoring entry {entry_id}...', end=' ', flush=True)
@@ -230,6 +231,7 @@ def main(input_json: Path, output_json: Path, sleep_between_req: float, parallel
                     except:
                         pass
             time.sleep(sleep_between_req)
+
     print(f'\n[4] Saving results to {output_json}...')
     temp_file = output_json.with_suffix('.tmp')
     try:
@@ -253,6 +255,7 @@ def main(input_json: Path, output_json: Path, sleep_between_req: float, parallel
     print(f'  Entries kept old scores: {len(already_scored_entries)}')
     print('=' * 60)
     print('✓ Scoring complete!')
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Score step6.json files with GPT-based llmjudge')
     parser.add_argument('--input', type=str, required=True, help='Path to input step6 JSON file')

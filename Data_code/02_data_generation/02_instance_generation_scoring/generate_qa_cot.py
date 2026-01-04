@@ -117,7 +117,7 @@ def _class_cache_save(cache: Dict[str, dict]):
 
 def _norm_subject_name(s: str) -> str:
     t = str(s or '').strip().lower()
-    mapping = {'diagnosis': 'diagnosis', 'dx': 'diagnosis', '诊断': 'diagnosis', 'etiology': 'etiology', 'aetiology': 'etiology', '病因': 'etiology', 'medicalknowledge': 'medical knowledge', 'knowledge': 'medical knowledge', 'general': 'medical knowledge', '基础知识': 'medical knowledge', 'prognosis': 'prognosis', '预后': 'prognosis', 'treatment': 'treatment', 'therapy': 'treatment', 'management': 'treatment', '治疗': 'treatment'}
+    mapping = {'diagnosis': 'diagnosis', 'dx': 'diagnosis', 'etiology': 'etiology', 'aetiology': 'etiology', 'medicalknowledge': 'medical knowledge', 'knowledge': 'medical knowledge', 'general': 'medical knowledge', 'prognosis': 'prognosis', 'treatment': 'treatment', 'therapy': 'treatment', 'management': 'treatment'}
     t = re.sub('[\\s_]+', '', t)
     return mapping.get(t, s)
 
@@ -197,9 +197,9 @@ def _norm_qtype_to_type_name(s: str) -> str:
     t = _canon(s)
     if t in {'qa', 'q', 'shortanswer'}:
         return 'QA'
-    if t in {'dia', 'dialog', 'dialogue', '对话', '對話'}:
+    if t in {'dia', 'dialog', 'dialogue'}:
         return 'Dialogue'
-    if t in {'mcq', 'mcqa', 'choice', 'singlechoice', 'multiplechoice', '选择题', '單選題', '多选题', '多選題'}:
+    if t in {'mcq', 'mcqa', 'choice', 'singlechoice', 'multiplechoice'}:
         return 'MCQ'
     return ''
 _TEMPL_POOL: Dict[Tuple[str, str], List[str]] = None
@@ -216,11 +216,9 @@ def load_templates_pool(xlsx_path: Path) -> Dict[Tuple[str, str], List[str]]:
         return None
     has_hindi = _find_col(['hindi']) is not None
     has_english = _find_col(['english']) is not None
-    col_qtype = _find_col(['qtype', 'type', '题型', '类型'])
+    col_qtype = _find_col(['qtype', 'type'])
     if has_hindi or has_english:
-        col_subj = _find_col(['category', 'theme', 'subject', '主题', '类别'])
-        if not col_subj:
-            raise ValueError(f'模板表缺少 Category 列，现有列：{list(df.columns)}')
+        col_subj = _find_col(['category', 'theme', 'subject'])
         pool: Dict[Tuple[str, str], List[str]] = {}
         for subj_raw, sub_df in df.groupby(col_subj, sort=False):
             if pd.isna(subj_raw):
@@ -256,14 +254,10 @@ def load_templates_pool(xlsx_path: Path) -> Dict[Tuple[str, str], List[str]]:
                         tname = 'MCQ'
                 key = (subj, tname)
                 pool.setdefault(key, []).append(qtxt)
-        if not pool:
-            raise ValueError('模板表解析为空，请检查内容。')
         return pool
-    col_subj = _find_col(['category', 'theme', 'subject', '主题', '类别'])
-    col_qtpl = _find_col(['question_templete', 'questiontemplate', 'question', '题干模板', '问题'])
-    col_atpl = _find_col(['answer(template)', 'answertemplate', '答案模板', '答案'])
-    if not (col_subj and col_qtpl and col_qtype):
-        raise ValueError(f'模板表缺关键列，需要 Subject + question_templete + qtype。现有列：{list(df.columns)}')
+    col_subj = _find_col(['category', 'theme', 'subject'])
+    col_qtpl = _find_col(['question_templete', 'questiontemplate', 'question'])
+    col_atpl = _find_col(['answer(template)', 'answertemplate'])
     pool: Dict[Tuple[str, str], List[str]] = {}
     for i in range(len(df)):
         subj_raw = str(df.at[i, col_subj]).strip()
@@ -281,8 +275,6 @@ def load_templates_pool(xlsx_path: Path) -> Dict[Tuple[str, str], List[str]]:
             continue
         key = (subj, tname)
         pool.setdefault(key, []).append(tpl)
-    if not pool:
-        raise ValueError('模板表解析为空，请检查列名和内容。')
     return pool
 
 def get_question_template(subject: str, qtype: str) -> str:
@@ -317,14 +309,12 @@ def load_examples_pool(xlsx_path: Path) -> Dict[Tuple[str, str], List[Dict]]:
             if any((_canon(x) in _canon(c) for x in cands)):
                 return c
         return None
-    col_subj = _find_col(['subject', 'theme', 'category', '主题', '类别'])
-    col_q = _find_col(['q', 'question', '问题', '题目'])
-    col_a = _find_col(['a', 'answer', '答案'])
-    col_cot = _find_col(['cot', 'reasoning', '解析', '解题思路'])
-    col_para = _find_col(['paragraph', 'context', 'text', '段落', '原文', '材料'])
-    col_qtype = _find_col(['qtype', 'type', '题型', '类型'])
-    if not (col_subj and col_q and col_a):
-        raise ValueError(f'few-shot 表缺少 subject/q/a 等必要列。现有列：{list(df.columns)}')
+    col_subj = _find_col(['subject', 'theme', 'category'])
+    col_q = _find_col(['q', 'question'])
+    col_a = _find_col(['a', 'answer'])
+    col_cot = _find_col(['cot', 'reasoning'])
+    col_para = _find_col(['paragraph', 'context', 'text'])
+    col_qtype = _find_col(['qtype', 'type'])
     pool: Dict[Tuple[str, str], List[Dict]] = {}
     for i in range(len(df)):
         subj_raw = str(df.at[i, col_subj]).strip()
@@ -370,7 +360,7 @@ DIALOGUE_FEW_SHOT = '\nExample (Dialogue - Easy):\n<q>User: गुरुजी, 
 DIFFICULTY_BLOCK = '\nDifficulty requirements:\n- EASY: single fact, no scenario, no reasoning required.\n- MEDIUM: 2-step reasoning, combine ~2 points, brief scenario optional.\n- HARD: 3-5 step reasoning, realistic scenario REQUIRED in traditional medicine context.\nAlways output EASY, MEDIUM, HARD in this order, all three must exist.\n'
 TYPE_PROMPTS = {'MCQ': f'You are an expert question writer for traditional medicine.\n\nGenerate THREE multiple-choice items (EASY, MEDIUM, HARD). Each item MUST have exactly five options labeled A., B., C., D., E. with ONE correct option. Provide correct option letter and reasoning.\n\nCRITICAL: MCQ is NOT a dialogue. Do NOT use any "User:" or "Assistant:" labels. Do NOT write multi-turn conversations. Each item should be a single self-contained question plus options.\n\nAvoid any mention of "text/paragraph/source". Keep content self-contained but grounded in the given paragraph. If details are missing, choose the most plausible option consistent with the paragraph without inventing unrelated facts.\n{DIFFICULTY_BLOCK}\n\nUse these few-shot examples as style references (do NOT copy sentences):\n{MCQ_FEW_SHOT}\n', 'QA': f'You are an expert question writer for traditional medicine.\n\nGenerate THREE short-answer items (EASY, MEDIUM, HARD). Provide concise question, short correct answer, and reasoning.\n\nCRITICAL: QA type means a SINGLE direct question followed by a direct answer. \n- DO NOT use dialogue format (no "User:" or "Assistant:" labels)\n- DO NOT create multi-turn conversations\n- Format: Just a question, then an answer\n- If you see "User:" or "Assistant:" in your output, you have made an error - QA should be simple Q&A pairs only\n\nAvoid any mention of "text/paragraph/source". Keep content self-contained but grounded in the given paragraph. If details are limited, provide the best plausible question/answer consistent with it.\n{DIFFICULTY_BLOCK}\n\nUse these few-shot examples as style references (do NOT copy sentences):\n{QA_FEW_SHOT}\n', 'Dialogue': f'You are an expert question writer for traditional medicine.\n\nGenerate THREE multi-turn User–Assistant dialogues (EASY, MEDIUM, HARD). Each dialogue must have two or more turns and end with a question from User. Provide the dialogue (up to the final user question), the correct answer, and reasoning. The setting must clearly be traditional medicine.\nAvoid any mention of "text/paragraph/source". Keep content self-contained but grounded in the given paragraph. If details are limited, provide the best plausible dialogue consistent with it.\n{DIFFICULTY_BLOCK}\n\nUse these few-shot examples as style references (do NOT copy sentences):\n{DIALOGUE_FEW_SHOT}\n'}
 OUTPUT_FORMAT = 'Return ONLY in this exact structure (no explanations, no markdown):\n<EASY><q>...</q><a>...</a><cot>...</cot></EASY>\n<MEDIUM><q>...</q><a>...</a><cot>...</cot></MEDIUM>\n<HARD><q>...</q><a>...</a><cot>...</cot></HARD>\n- MCQ: question must include options A. B. C. D. E.\n- QA: MUST be a single direct question (NO "User:" or "Assistant:" labels, NO dialogue format)\n- Dialogue: MUST include \'User:\' and \'Assistant:\' turns (multi-turn conversation format)\nIf absolutely impossible, return <FAIL>.\n'
-_FORBIDDEN_SOURCE_PATTERNS = ['根据原文[:：]?', '根据文本[:：]?', '根据上述(段落|内容)?', '文中提到[:：]?', '文中所说[:：]?', '文中[:：]?', '原文[:：]?', '段落[:：]?', 'paragraph', 'source text', 'the text', 'the paragraph', '上述材料']
+_FORBIDDEN_SOURCE_PATTERNS = ['paragraph', 'source text', 'the text', 'the paragraph']
 
 def sanitize_output_text(text: str) -> str:
     if not text:

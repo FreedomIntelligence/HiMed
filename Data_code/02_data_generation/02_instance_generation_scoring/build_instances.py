@@ -46,12 +46,13 @@ def get_numeric_raw_id(meta: Dict, mapping: Dict[str, str]) -> Tuple[str, str]:
         rid3 = f'{len(mapping) + 1:03d}'
         mapping[rid_raw] = rid3
     return (rid_raw, rid3)
+
 TOPICS = ['diagnosis', 'etiology', 'medical knowledge', 'prognosis', 'treatment']
 TYPES = ['MCQ', 'QA', 'Dialogue']
 
 def _norm_subject_name(s: str) -> str:
     t = str(s or '').strip().lower()
-    mapping = {'diagnosis': 'diagnosis', 'dx': 'diagnosis', '诊断': 'diagnosis', 'treatment': 'treatment', 'therapy': 'treatment', 'management': 'treatment', '治疗': 'treatment', 'etiology': 'etiology', 'aetiology': 'etiology', '病因': 'etiology', 'prognosis': 'prognosis', '预后': 'prognosis', 'medical knowledge': 'medical knowledge', 'knowledge': 'medical knowledge', 'general': 'medical knowledge', '基础知识': 'medical knowledge'}
+    mapping = {'diagnosis': 'diagnosis', 'dx': 'diagnosis', 'treatment': 'treatment', 'therapy': 'treatment', 'management': 'treatment', 'etiology': 'etiology', 'aetiology': 'etiology', 'prognosis': 'prognosis', 'medical knowledge': 'medical knowledge', 'knowledge': 'medical knowledge', 'general': 'medical knowledge'}
     return mapping.get(t, t)
 
 def _norm_qtype_name(s: str) -> str:
@@ -69,9 +70,9 @@ def load_templates_pool(xlsx_path: Path) -> Dict[Tuple[str, str], List[str]]:
     required_cols = ['Category']
     for c in required_cols:
         if c not in df.columns:
-            raise ValueError(f'模板表缺少必要列: {c}, 现有列: {list(df.columns)}')
+            raise ValueError(f'Missing required column in template sheet: {c}. Existing columns: {list(df.columns)}')
     if 'Hindi' not in df.columns and 'English' not in df.columns:
-        raise ValueError(f'模板表缺少 Hindi/English 文本列，现有列: {list(df.columns)}')
+        raise ValueError(f'Missing Hindi/English text column in template sheet. Existing columns: {list(df.columns)}')
     pool: Dict[Tuple[str, str], List[str]] = {}
     for subj_raw, sub_df in df.groupby('Category', sort=False):
         if not subj_raw:
@@ -113,7 +114,7 @@ def load_templates_pool(xlsx_path: Path) -> Dict[Tuple[str, str], List[str]]:
             key = (subj, tname)
             pool.setdefault(key, []).append(qtxt)
     if not pool:
-        raise ValueError('模板表解析为空，请检查 inspool_HI.xlsx 内容。')
+        raise ValueError('Template sheet parsed to an empty pool. Please check inspool_HI.xlsx content.')
     return pool
 
 def get_question_template(pool: Dict[Tuple[str, str], List[str]], subject: str, qtype: str) -> str:
@@ -144,7 +145,7 @@ def load_examples_pool(xlsx_path: Path) -> Dict[Tuple[str, str], List[Dict]]:
     required_cols = ['Category', 'Question', 'Answer']
     for c in required_cols:
         if c not in df.columns:
-            raise ValueError(f'few-shot 表缺少必要列: {c}, 现有列: {list(df.columns)}')
+            raise ValueError(f'Missing required column in few-shot sheet: {c}. Existing columns: {list(df.columns)}')
     pool: Dict[Tuple[str, str], List[Dict]] = {}
     for i in range(len(df)):
         subj_raw = df.at[i, 'Category']
@@ -218,10 +219,10 @@ def process_single_text_id(blk: Dict, idx: int, rid_map: Dict[str, str], process
 
 def process_results_good(src: Path, dst: Path, instr_xlsx_path: Path, examples_xlsx_path: Path, sleep_between_req: float=0.5, parallel_workers: int=100):
     file_name = src.stem.replace('.good', '')
-    print(f'[文件] {file_name}')
-    print(f'[info] load good json: {src}')
+    print(f'[FILE] {file_name}')
+    print(f'[INFO] load good json: {src}')
     blocks = load_results_good(src)
-    print(f'[info] found {len(blocks)} blocks')
+    print(f'[INFO] found {len(blocks)} blocks')
     if not instr_xlsx_path.exists():
         raise FileNotFoundError(f'Template Excel not found: {instr_xlsx_path}')
     if not examples_xlsx_path.exists():
@@ -240,14 +241,14 @@ def process_results_good(src: Path, dst: Path, instr_xlsx_path: Path, examples_x
                 if tid:
                     processed_text_ids.add(tid)
                     text_id_entry_count[tid] = text_id_entry_count.get(tid, 0) + 1
-            print(f'[info] resume mode: loaded {len(existing_entries)} existing entries, processed text_id count={len(processed_text_ids)}')
+            print(f'[INFO] resume mode: loaded {len(existing_entries)} existing entries, processed text_id count={len(processed_text_ids)}')
         except Exception as e:
-            print(f'[warn] failed to load existing output {dst}, will regenerate from scratch. error={e}')
+            print(f'[WARN] failed to load existing output {dst}, will regenerate from scratch. error={e}')
             existing_entries = []
             processed_text_ids = set()
             text_id_entry_count = {}
     rid_map = build_raw_id_mapping(blocks)
-    print(f'[info] raw_id mapping: {rid_map}')
+    print(f'[INFO] raw_id mapping: {rid_map}')
     all_entries: List[Dict] = list(existing_entries)
     write_lock = threading.Lock()
     text_id_subjects = {}
@@ -278,7 +279,7 @@ def process_results_good(src: Path, dst: Path, instr_xlsx_path: Path, examples_x
                 else:
                     all_entries = [e for e in all_entries if (e.get('metadata') or {}).get('text_id') != text_id]
                     incomplete_count += 1
-                    print(f'[info] [{file_name}] text_id {text_id} incomplete ({actual_count}/{expected_entry_count}), reprocessing...')
+                    print(f'[INFO] [{file_name}] text_id {text_id} incomplete ({actual_count}/{expected_entry_count}), reprocessing...')
             else:
                 min_expected = len(TYPES) * 3
                 if actual_count >= min_expected and actual_count % 9 == 0:
@@ -286,15 +287,15 @@ def process_results_good(src: Path, dst: Path, instr_xlsx_path: Path, examples_x
                 elif actual_count > 0:
                     all_entries = [e for e in all_entries if (e.get('metadata') or {}).get('text_id') != text_id]
                     incomplete_count += 1
-                    print(f'[info] [{file_name}] text_id {text_id} incomplete ({actual_count} entries, subject unknown), reprocessing...')
+                    print(f'[INFO] [{file_name}] text_id {text_id} incomplete ({actual_count} entries, subject unknown), reprocessing...')
         blocks_to_process.append((idx, blk))
     if skipped_count > 0:
-        print(f'[info] [{file_name}] 跳过已完成的 text_id: {skipped_count} 个')
+        print(f'[INFO] [{file_name}] skipped completed text_id: {skipped_count}')
     if incomplete_count > 0:
-        print(f'[info] [{file_name}] 发现不完整的 text_id: {incomplete_count} 个，将重新处理')
-    print(f'[info] [{file_name}] 需要处理 {len(blocks_to_process)} 个 text_id')
+        print(f'[INFO] [{file_name}] found incomplete text_id: {incomplete_count}; will reprocess')
+    print(f'[INFO] [{file_name}] to process: {len(blocks_to_process)} text_id')
     if parallel_workers > 1 and len(blocks_to_process) > 1:
-        print(f'[info] [{file_name}] 使用并行处理，并行度: {parallel_workers}')
+        print(f'[INFO] [{file_name}] parallel mode, workers: {parallel_workers}')
 
         def process_and_save(block_data):
             idx, blk = block_data
@@ -306,6 +307,7 @@ def process_results_good(src: Path, dst: Path, instr_xlsx_path: Path, examples_x
                 all_entries.extend(text_entries)
                 dst.write_text(json.dumps(all_entries, ensure_ascii=False, indent=2), encoding='utf-8')
             return (text_id, text_entries, should_skip)
+
         completed_count = 0
         batch_results = []
         batch_number = 1
@@ -320,17 +322,17 @@ def process_results_good(src: Path, dst: Path, instr_xlsx_path: Path, examples_x
                         batch_results.append((text_id, len(text_entries)))
                         if len(batch_results) >= REPORT_BATCH_SIZE:
                             batch_entries_sum = sum((entries for _, entries in batch_results))
-                            print(f'[{file_name}] 批次 {batch_number}: 完成 {len(batch_results)} 个 text_id, 总计 {batch_entries_sum} entries, 总进度: {completed_count}/{len(blocks_to_process)}')
+                            print(f'[{file_name}] batch {batch_number}: done {len(batch_results)} text_id, total {batch_entries_sum} entries, progress {completed_count}/{len(blocks_to_process)}')
                             batch_results = []
                             batch_number += 1
                 except Exception as e:
                     block_data = future_to_block[future]
-                    print(f'[错误] [{file_name}] 处理 block {block_data[0]} 时出错: {e}')
+                    print(f'[ERROR] [{file_name}] failed at block {block_data[0]}: {e}')
             if batch_results:
                 batch_entries_sum = sum((entries for _, entries in batch_results))
-                print(f'[{file_name}] 批次 {batch_number}: 完成 {len(batch_results)} 个 text_id, 总计 {batch_entries_sum} entries, 总进度: {completed_count}/{len(blocks_to_process)} (全部完成)')
+                print(f'[{file_name}] batch {batch_number}: done {len(batch_results)} text_id, total {batch_entries_sum} entries, progress {completed_count}/{len(blocks_to_process)} (all done)')
     else:
-        print(f'[info] [{file_name}] 使用串行处理')
+        print(f'[INFO] [{file_name}] serial mode')
         completed_count = 0
         for idx, blk in blocks_to_process:
             text_id, text_entries, should_skip = process_single_text_id(blk, idx, rid_map, processed_text_ids, text_id_entry_count, templ_pool, ex_pool)
@@ -341,9 +343,9 @@ def process_results_good(src: Path, dst: Path, instr_xlsx_path: Path, examples_x
                 all_entries = [e for e in all_entries if (e.get('metadata') or {}).get('text_id') != text_id]
             all_entries.extend(text_entries)
             dst.write_text(json.dumps(all_entries, ensure_ascii=False, indent=2), encoding='utf-8')
-            print(f'[进度] [{file_name}] {completed_count}/{len(blocks_to_process)} - text_id {text_id} 完成 ({len(text_entries)} entries)')
+            print(f'[PROGRESS] [{file_name}] {completed_count}/{len(blocks_to_process)} - text_id {text_id} done ({len(text_entries)} entries)')
         time.sleep(sleep_between_req)
-    print(f'[OK] write step6 json: {dst} (entries: {len(all_entries)})')
+    print(f'[OK] wrote step6 json: {dst} (entries: {len(all_entries)})')
 
 def main():
     parser = argparse.ArgumentParser(description='Convert one results_good *.good.json into step6 JSON.')
@@ -359,5 +361,6 @@ def main():
     instr_xlsx_path = Path(args.instr_xlsx)
     examples_xlsx_path = Path(args.examples_xlsx)
     process_results_good(src=input_json, dst=output_json, instr_xlsx_path=instr_xlsx_path, examples_xlsx_path=examples_xlsx_path, sleep_between_req=args.sleep_between_req, parallel_workers=args.parallel_workers)
+
 if __name__ == '__main__':
     main()
