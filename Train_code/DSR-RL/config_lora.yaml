@@ -41,12 +41,12 @@ training:
   temperature: 1.0
   top_p: 1.0
 
-  reward_weights: [1.0, 0]
-  reward_weights_end: [1.0, 0]
+  reward_weights: [0.1, 0.9]
+  reward_weights_end: [0.9, 0.1]
   reward_weights_schedule: "cosine"  
 
   lexicon_config:
-    path: ""
+    path: "Data_code/03_translation/final_lexicon_table.xlsx"
     min_en_length: 2
     min_hi_length: 1
     use_ahocorasick: false

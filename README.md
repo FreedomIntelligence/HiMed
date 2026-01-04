@@ -97,6 +97,7 @@ export NCCL_BLOCKING_WAIT=1
 ```
 
 #### Stage 1 — Language Adaptation (LA)
+Fine-tune the base model (**LLaMA-3.1-8B-Instruct**) on an **8×H200** setup with Accelerate + DeepSpeed. We use bf16 and ZeRO stage-2; see `Train_code/configs/ds_config.yaml` for details.
 
 - Script: `Train_code/LA.py`
 - Accelerate/DeepSpeed config: `Train_code/configs/ds_config.yaml`
@@ -106,25 +107,22 @@ conda activate himed-train
 cd Train_code
 
 accelerate launch \
-  --config_file ./configs/ds_config.yaml \
+  --config_file Train_code/configs/ds_config.yaml \
   --num_processes 8 \
-  LA.py \
-  --experiment_name <EXP_NAME_STAGE1> \
-  --model_path <PATH_TO_BASE_MODEL_OR_LOCAL_CKPT> \
-  --data_path <DATA_PATH_STAGE1> \
-  --output_dir <OUTPUT_DIR_STAGE1> \
-  --best_ckpt_dir <BEST_CKPT_DIR> \
-  --max_seq_len <MAX_SEQ_LEN> \
-  --train_bsz_per_gpu <BSZ_PER_GPU> \
-  --gradient_accumulation_steps <GA> \
-  --learning_rate <LR> \
-  --weight_decay <WD> \
-  --warmup_rates <WARMUP_RATIO> \
-  --n_epochs <EPOCHS> \
+  Train_code/LA.py \
+  --model_path <BASE_MODEL_PATH_OR_HF_ID> \
+  --data_path <STAGE1_DATA_PATH> \
+  --output_dir <OUTPUT_DIR> \
+  --max_seq_len 4096 \
+  --train_bsz_per_gpu 32 \
+  --gradient_accumulation_steps 1 \
+  --learning_rate 5e-6 \
+  --n_epochs 3 \
   --gradient_checkpointing
 ```
 
 #### Stage 2 — Reasoning Cold-Start (RC)
+Fine-tune the Stage-1 checkpoint for Hindi medical reasoning on an **8×H200** setup with Accelerate + DeepSpeed (bf16, ZeRO-2). The distributed/ZeRO configuration is defined in `Train_code/configs/ds_config.yaml`.
 
 - Script: `Train_code/RC.py`
 - Same config: `Train_code/configs/ds_config.yaml`
@@ -135,34 +133,43 @@ conda activate himed-train
 cd Train_code
 
 accelerate launch \
-  --config_file ./configs/ds_config.yaml \
+  --config_file Train_code/configs/ds_config.yaml \
   --num_processes 8 \
-  RC.py \
-  --experiment_name <EXP_NAME_STAGE2> \
+  Train_code/RC.py \
   --model_path <PATH_TO_STAGE1_CKPT> \
-  --data_path <DATA_PATH_STAGE2> \
-  --output_dir <OUTPUT_DIR_STAGE2> \
+  --data_path <STAGE2_DATA_PATH> \
+  --output_dir <OUTPUT_DIR> \
   --best_ckpt_dir <BEST_CKPT_DIR> \
-  --max_seq_len <MAX_SEQ_LEN> \
-  --train_bsz_per_gpu <BSZ_PER_GPU> \
-  --gradient_accumulation_steps <GA> \
-  --learning_rate <LR> \
-  --weight_decay <WD> \
-  --warmup_rates <WARMUP_RATIO> \
-  --n_epochs <EPOCHS> \
+  --max_seq_len 4096 \
+  --train_bsz_per_gpu 8 \
+  --gradient_accumulation_steps 1 \
+  --learning_rate 5e-6 \
+  --n_epochs 3 \
   --gradient_checkpointing
 ```
 
+Optional:
+- `--weight_decay` (default: 0.01)
+- `--warmup_rates` (default: 0.03)
+- `--ckpt_per_epoch` / `--log_steps_per_epoch` (checkpointing/logging frequency)
+
+
+
 
 #### Stage 3 — DSR-RL (Placeholder)
+Fine-tune the Stage-2 checkpoint for overall medical reasoning on an **8×H200** setup with Accelerate. The configuration is defined in `Train_code/DSR-RL/config_lora.yaml`.
 
-Stage 3 (Decaying Scaffolding Reward RL) is currently a placeholder in this repo.
-
+- Script: `Train_code/DSR-RL/run_grpo_lora.py`
+- Config: `Train_code/DSR-RL/config_lora.yaml`
+- `model, name:` points to the Stage 2 checkpoint (e.g., `best_checkpoint`)
+- `reward_model, model_name:` points to our R<sub>1</sub>  Reward Model 
+-  `dataset, path:` points to our RL training dataset.
+- Before running, please fill in all the corresponding path in the `config_lora.yaml` file
 ```bash
-# TODO (placeholder)
-# conda activate himed-rl
-# cd Train_code/DSR-RL
-# accelerate launch ... <your RL entrypoint> ...
+conda activate himed-rl
+cd Train_code/DSR-RL
+
+accelerate launch run_grpo_lora.py --config config_lora.yaml
 ```
 
 
@@ -198,86 +205,6 @@ The full training corpora are large. In this repository, we provide **500-sample
 - `HiMed-West_Corpus_sample.json`
 
 The complete versions of **HiMed-Trad Corpus** and **HiMed-West Corpus** will be released upon paper acceptance.
-
-
-## 🚀 Training
-
-### Stage 1: Language Adaptation (LA)
-
-Fine-tune the base model (**LLaMA-3.1-8B-Instruct**) on an **8×H200** setup with Accelerate + DeepSpeed. We use bf16 and ZeRO stage-2; see `Train_code/configs/ds_config.yaml` for details.
-
-```bash
-accelerate launch \
-  --config_file Train_code/configs/ds_config.yaml \
-  --num_processes 8 \
-  Train_code/LA.py \
-  --model_path <BASE_MODEL_PATH_OR_HF_ID> \
-  --data_path <STAGE1_DATA_PATH> \
-  --output_dir <OUTPUT_DIR> \
-  --max_seq_len 4096 \
-  --train_bsz_per_gpu 32 \
-  --gradient_accumulation_steps 1 \
-  --learning_rate 5e-6 \
-  --n_epochs 3 \
-  --gradient_checkpointing
-```
-
-Notes:
-- You can set `--experiment_name` / logging backends (e.g., SwanLab/W&B) if needed; we omit them here for clarity.
-
-
-
-### Stage 2: Reasoning Cold-Start (RC)
-
-Fine-tune the Stage-1 checkpoint for Hindi medical reasoning on an **8×H200** setup with Accelerate + DeepSpeed (bf16, ZeRO-2). The distributed/ZeRO configuration is defined in `Train_code/configs/ds_config.yaml`.
-
-```bash
-accelerate launch \
-  --config_file Train_code/configs/ds_config.yaml \
-  --num_processes 8 \
-  Train_code/RC.py \
-  --model_path <PATH_TO_STAGE1_CKPT> \
-  --data_path <STAGE2_DATA_PATH> \
-  --output_dir <OUTPUT_DIR> \
-  --best_ckpt_dir <BEST_CKPT_DIR> \
-  --max_seq_len 4096 \
-  --train_bsz_per_gpu 8 \
-  --gradient_accumulation_steps 1 \
-  --learning_rate 5e-6 \
-  --n_epochs 3 \
-  --gradient_checkpointing
-```
-
-Optional:
-- `--weight_decay` (default: 0.01)
-- `--warmup_rates` (default: 0.03)
-- `--ckpt_per_epoch` / `--log_steps_per_epoch` (checkpointing/logging frequency)
-
-
-### Stage 3 — Decaying Scaffolding Reward Reinforcement Learning (DSR-RL)
-Goal: RL with a **decaying scaffolding** reward that shifts emphasis from guided reasoning behavior → task-optimal objective.
-
-```bash
-cd "Training code"
-accelerate launch --config_file ./configs/<CONFIG_STAGE3>.yaml \
-  S3_DSR_RL.py \
-  --model_name_or_path <CKPT_FROM_STAGE2> \
-  --dataset_name <RL_DATASET> \
-  --reward_model <REWARD_OR_VERIFIER_PATH> \
-  --output_dir <OUTPUT_DIR_STAGE3> \
-  --run_name <RUN_NAME_STAGE3> \
-  --total_episodes <N> \
-  --learning_rate <LR> \
-  --kl_coef <KL>
-```
-
-### Notes (fill as needed)
-- **Reward design:** describe your scaffold reward components (format/consistency/faithfulness/answer correctness, etc.).
-- **Decay schedule:** specify how scaffold weight decays over steps/epochs.
-- **Answer extraction:** how final answer is parsed for verifiable reward/metrics.
-
----
-
 
 ## 🧩 Data Pipeline (Data_code)
 
