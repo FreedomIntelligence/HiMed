@@ -336,4 +336,4 @@ if __name__ == '__main__':
     print('TRANSLATED OUTPUT')
     print(f"{'=' * 80}")
     print(result)
-    print(f'\n⏱️  Translation time: {elapsed:.2f} seconds')
+    print(f'\n Translation time: {elapsed:.2f} seconds')

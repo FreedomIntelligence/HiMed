@@ -7,7 +7,7 @@ from tqdm import tqdm
 try:
     from translation_api import translate_paragraphs
 except ImportError:
-    print("⚠️ Warning: 'translation_api' not found. Using dummy translation for testing.")
+    print("Warning: 'translation_api' not found. Using dummy translation for testing.")
 
     def translate_paragraphs(texts):
         return [f'[HI] {t}' for t in texts]
@@ -130,13 +130,13 @@ class QuestionTranslator:
                 if self.save_interval and (i // self.batch_size + 1) % self.save_interval == 0:
                     self.save_data(questions, out_p)
         self.save_data(questions, out_p)
-        print(f'\n✅ Done! Saved to: {out_p}')
+        print(f'\nDone! Saved to: {out_p}')
 
 def main():
-    input_file = input('📂 Input JSON path: ').strip().strip('"').strip("'")
-    output_file = input('📂 Output JSON path: ').strip().strip('"').strip("'")
-    batch_size = int(input('📦 Batch size [Enter for 100]: ') or 100)
-    save_interval = int(input('💾 Save interval (batches) [Enter for 10]: ') or 10)
+    input_file = input('Input JSON path: ').strip().strip('"').strip("'")
+    output_file = input('Output JSON path: ').strip().strip('"').strip("'")
+    batch_size = int(input('Batch size [Enter for 100]: ') or 100)
+    save_interval = int(input('Save interval (batches) [Enter for 10]: ') or 10)
     translator = QuestionTranslator(batch_size=batch_size, save_interval=save_interval)
     translator.process_file(input_file, output_file)
 if __name__ == '__main__':
