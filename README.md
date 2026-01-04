@@ -30,7 +30,7 @@ To this end, we propose a **three-stage training framework** comprising **langua
 .
 ├── Data/                  # all released datasets & benchmark files (or download pointers)
 ├── Training code/         # stage1/2/3 training + RL + evaluation scripts
-└──Data Code/             # data construction / translation / filtering / dedup pipelines
+└── Data Code/             # data construction / translation / filtering / dedup pipelines
 ```
 
 **Recommended reading order:** `Data/ → Training code/ → Data Code/`.
@@ -178,18 +178,31 @@ accelerate launch run_grpo_lora.py --config config_lora.yaml
 
 ## 📚 Data (HiMed)
 
-HiMed is a Hindi medical dataset and benchmark suite covering both Western medicine and Indian systems of medicine. It consists of two parts: **HiMed-Trad** (traditional Indian medicine) and **HiMed-West** (Western medicine under Hindi prompts). We enforce strict data separation between training corpora and evaluation benchmarks to prevent leakage (see paper for details).
+HiMed is a Hindi medical dataset and benchmark suite covering both Western medicine and Indian systems of medicine.  
+It consists of two parts: **HiMed-Trad** (traditional Indian medicine) and **HiMed-West** (Western medicine under Hindi prompts).  
+We enforce strict separation between training corpora and evaluation benchmarks to prevent leakage (see paper for details).
 
-### Data Files
-We release five JSON files under `Data/`:
+### Directory Structure
 
 ```text
 Data/
-├── HiMed-Trad_Bench.json
-├── HiMed-Trad_Corpus_sample.json
-├── HiMed-West_Bench.json
-├── HiMed-West_Corpus_sample.json
-└── HiMed-West_Exam.json
+├── HiMed-Trad_Bench/
+│   └── HiMed-Trad_Bench.json
+├── HiMed-Trad_Corpus/
+│   ├── HiMed-Trad_Corpus.part0001.json
+│   ├── HiMed-Trad_Corpus.part0002.json
+│   ├── HiMed-Trad_Corpus.part0003.json
+│   └── HiMed-Trad_Corpus.part0004.json
+├── HiMed-West_Bench/
+│   └── HiMed-West_Bench.json
+├── HiMed-West_Corpus/
+│   ├── HiMed-West_Corpus.part0001.json
+│   ├── HiMed-West_Corpus.part0002.json
+│   ├── HiMed-West_Corpus.part0003.json
+│   ├── HiMed-West_Corpus.part0004.json
+│   └── HiMed-West_Corpus.part0005.json
+└── HiMed-West_Exam/
+    └── HiMed-West_Exam.json
 ```
 
 ### Statistics
@@ -199,12 +212,10 @@ Data/
 - **HiMed-Trad Corpus (full)**: 286,657
 - **HiMed-West Corpus (full)**: 116,859
 
-### Note on Corpus Release
-The full training corpora are large. In this repository, we provide **500-sample subsets** for:
-- `HiMed-Trad_Corpus_sample.json`
-- `HiMed-West_Corpus_sample.json`
+### Note on Corpus Sharding
+The two training corpora are **sharded** into multiple `*.partXXXX.json` files for easier storage and transfer.  
+All parts share the same schema and can be loaded/merged in order.
 
-The complete versions of **HiMed-Trad Corpus** and **HiMed-West Corpus** will be released upon paper acceptance.
 
 ## 🧩 Data Pipeline (Data_code)
 
