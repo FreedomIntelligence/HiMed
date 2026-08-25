@@ -1,4 +1,4 @@
-# <PROJECT-NAME> HiMed: Incentivizing Hindi Reasoning via Decaying Scaffolding Reward Reinforcement Learning in Medical LLMs
+# HiMed: Incentivizing Hindi Reasoning in Medical LLMs
 
 
 
@@ -9,40 +9,29 @@ Medical large language models hold promise for reducing healthcare disparities, 
 To this end, we propose a **three-stage training framework** comprising **language adaptation**, **reasoning cold-start**, and **Decaying Scaffolding Reward Reinforcement Learning (DSR-RL)**, which gradually shifts optimization from reasoning behavior guidance to task-optimal objectives. We further introduce **HiMed**, a comprehensive Hindi medical dataset and benchmark suite covering both **Western** and **Indian medicine**. Experiments based on **LLaMA-3.1-8B-Instruct** yield **HiMed-8B**, which consistently improves Hindi medical reasoning performance and substantially reduces the English–Hindi accuracy gap. Ablation studies further validate the contribution of each training stage and the reward design.
 
 **This repository releases:**
-- ✅ **Data/**: all datasets & benchmark files (or download pointers)
-- ✅ **Training code/**: stage1/2/3 training + RL + evaluation scripts
-- ✅ **Data Code/**: data construction / translation / filtering / dedup pipelines
-
----
-
-## 🔥 Highlights
-- **HiMed**: Hindi medical dataset + benchmark suite spanning **Western** + **Indian** medicine.
-- **HiMed-8B**: Hindi medical reasoning model trained from **LLaMA-3.1-8B-Instruct**.
-- **DSR-RL**: a decaying scaffolding reward that transitions from guided reasoning to task-optimal objectives.
-- **Cross-lingual gains**: consistently narrows the English–Hindi performance gap (see paper for details).
+- ✅ **Data/**: all datasets & benchmark files
+- ✅ **Train_code/**: three stage training code
+- ✅ **Data_code/**: data construction / translation / filtering pipelines
+- ✅ **Model weights**: released through the [HiMed collection on Hugging Face](https://huggingface.co/collections/FreedomIntelligence/himed)
 
 ---
 
 ## 🧭 Repository Structure
 
-
 ```text
 .
-├── Data/                  # all released datasets & benchmark files (or download pointers)
-├── Training code/         # stage1/2/3 training + RL + evaluation scripts
-└── Data Code/             # data construction / translation / filtering / dedup pipelines
+├── Data/                  # all released datasets & benchmark files
+├── Train_code/            # stage1/2/3 training
+└── Data_code/             # data construction / translation / filtering pipelines
 ```
-
-**Recommended reading order:** `Data/ → Training code/ → Data Code/`.
 
 ---
 
 ## 👨‍⚕️ Models
 
-We do **not** release model checkpoints at this stage.
+The HiMed model checkpoints and weights are publicly available through our Hugging Face collection. See [Models/README.md](Models/README.md) for download details:
 
-- `Models/` is intentionally left **empty** in this repository.
-- Checkpoints and model weights **will be open-sourced once accepted**.
+- 🤗 **[HiMed Models and Weights](https://huggingface.co/collections/FreedomIntelligence/himed)**
 
 ---
 
@@ -51,7 +40,7 @@ We do **not** release model checkpoints at this stage.
 ### 1) Installation
 
 ```bash
-git clone XXXX-3
+git clone https://github.com/FreedomIntelligence/HiMed.git
 cd HiMed
 ```
 
@@ -81,7 +70,7 @@ pip install -r Train_code/DSR-RL/requirements.txt
 
 ### 2) Training (Stage 1 / Stage 2 / Stage 3)
 
-> Training scripts are under `Train_code/`.  
+> Training scripts are under `Train_code/`.
 > Our runs use **8×H200**, **bf16**, and **Accelerate + DeepSpeed (ZeRO-2)**.
 
 (Optional but recommended for large-scale runs)
@@ -96,7 +85,7 @@ export NCCL_IB_DISABLE=1
 export NCCL_BLOCKING_WAIT=1
 ```
 
-#### Stage 1 — Language Adaptation (LA)
+#### Stage 1 — Language Adaptation
 Fine-tune the base model (**LLaMA-3.1-8B-Instruct**) on an **8×H200** setup with Accelerate + DeepSpeed. We use bf16 and ZeRO stage-2; see `Train_code/configs/ds_config.yaml` for details.
 
 - Script: `Train_code/LA.py`
@@ -104,7 +93,6 @@ Fine-tune the base model (**LLaMA-3.1-8B-Instruct**) on an **8×H200** setup wit
 
 ```bash
 conda activate himed-train
-cd Train_code
 
 accelerate launch \
   --config_file Train_code/configs/ds_config.yaml \
@@ -121,7 +109,7 @@ accelerate launch \
   --gradient_checkpointing
 ```
 
-#### Stage 2 — Reasoning Cold-Start (RC)
+#### Stage 2 — Reasoning Cold-Start
 Fine-tune the Stage-1 checkpoint for Hindi medical reasoning on an **8×H200** setup with Accelerate + DeepSpeed (bf16, ZeRO-2). The distributed/ZeRO configuration is defined in `Train_code/configs/ds_config.yaml`.
 
 - Script: `Train_code/RC.py`
@@ -130,7 +118,6 @@ Fine-tune the Stage-1 checkpoint for Hindi medical reasoning on an **8×H200** s
 
 ```bash
 conda activate himed-train
-cd Train_code
 
 accelerate launch \
   --config_file Train_code/configs/ds_config.yaml \
@@ -156,13 +143,13 @@ Optional:
 
 
 
-#### Stage 3 — DSR-RL (Placeholder)
+#### Stage 3 — DSR-RL
 Fine-tune the Stage-2 checkpoint for overall medical reasoning on an **8×H200** setup with Accelerate. The configuration is defined in `Train_code/DSR-RL/config_lora.yaml`.
 
 - Script: `Train_code/DSR-RL/run_grpo_lora.py`
 - Config: `Train_code/DSR-RL/config_lora.yaml`
 - `model, name:` points to the Stage 2 checkpoint (e.g., `best_checkpoint`)
-- `reward_model, model_name:` points to our R<sub>1</sub>  Reward Model 
+- `reward_model, model_name:` points to our R<sub>1</sub>  Reward Model
 -  `dataset, path:` points to our RL training dataset.
 - Before running, please fill in all the corresponding path in the `config_lora.yaml` file
 ```bash
@@ -178,8 +165,8 @@ accelerate launch run_grpo_lora.py --config config_lora.yaml
 
 ## 📚 Data (HiMed)
 
-HiMed is a Hindi medical dataset and benchmark suite covering both Western medicine and Indian systems of medicine.  
-It consists of two parts: **HiMed-Trad** (traditional Indian medicine) and **HiMed-West** (Western medicine under Hindi prompts).  
+HiMed is a Hindi medical dataset and benchmark suite covering both Western medicine and Indian systems of medicine.
+It consists of two parts: **HiMed-Trad** (traditional Indian medicine) and **HiMed-West** (Western medicine under Hindi prompts).
 We enforce strict separation between training corpora and evaluation benchmarks to prevent leakage (see paper for details).
 
 ### Directory Structure
@@ -213,7 +200,7 @@ Data/
 - **HiMed-West Corpus (full)**: 116,859
 
 ### Note on Corpus Sharding
-The two training corpora are **sharded** into multiple `*.partXXXX.json` files for easier storage and transfer.  
+The two training corpora are **sharded** into multiple `*.partXXXX.json` files for easier storage and transfer.
 All parts share the same schema and can be loaded/merged in order.
 
 
@@ -269,9 +256,9 @@ Data_code/03_translation/
 
 Edit the `_Config` class in `translation_api.py`:
 
-- `MODEL_PATH` (**required**): NLLB model path or HuggingFace repo id  
+- `MODEL_PATH` (**required**): NLLB model path or HuggingFace repo id
   e.g., `/data/models/nllb-200-3.3B` or `facebook/nllb-200-3.3B`
-- `LEXICON_PATH` (**required**): English–Hindi medical lexicon file (`.xlsx` or `.csv`)  
+- `LEXICON_PATH` (**required**): English–Hindi medical lexicon file (`.xlsx` or `.csv`)
   Must contain columns **`English`** and **`Hindi`** (can be an empty table with only headers if you want to disable term rules).
 - `SOURCE_LANG` (default: `eng_Latn`): NLLB source language code
 - `TARGET_LANG` (default: `hin_Deva`): NLLB target language code
