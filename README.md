@@ -127,11 +127,11 @@ accelerate launch \
   --data_path <STAGE2_DATA_PATH> \
   --output_dir <OUTPUT_DIR> \
   --best_ckpt_dir <BEST_CKPT_DIR> \
-  --max_seq_len 4096 \
+  --max_seq_len 1536 \
   --train_bsz_per_gpu 8 \
-  --gradient_accumulation_steps 1 \
-  --learning_rate 5e-6 \
-  --n_epochs 3 \
+  --gradient_accumulation_steps 2 \
+  --learning_rate 1e-6 \
+  --n_epochs 10 \
   --gradient_checkpointing
 ```
 
